@@ -28,10 +28,7 @@
  */
 
 import groovy.json.JsonSlurper
-import groovy.transform.CompileStatic
-import groovy.transform.TypeCheckingMode
 
-@CompileStatic(TypeCheckingMode.SKIP)
 static String version() { return 'v0.1.0' }
 static String rootTopic() { return 'hubitat' }
 
@@ -147,7 +144,7 @@ metadata
     }
 }
 
-void initialize() {
+def initialize() {
     debug('Initializing driver...')
     try {
         debug('Creating Connection...')
@@ -170,7 +167,7 @@ void initialize() {
 }
 
 // reconnect on saved changes
-void updated() {
+def updated() {
     disconnect()
     connect()
 }
@@ -179,11 +176,11 @@ void updated() {
 // MQTT COMMANDS
 // ========================================================
 
-void publish(String topic, String payload) {
+def publish(String topic, String payload) {
     publishMqtt(topic, payload)
 }
 
-void subscribe() {
+def subscribe() {
     if (!mqttConnected()) {
         connect()
     }
@@ -195,7 +192,7 @@ void subscribe() {
     state.subscription_topic = settings?.subscription_topics
 }
 
-void unsubscribe() {
+def unsubscribe() {
     if (!mqttConnected()) {
         connect()
     }
@@ -204,11 +201,11 @@ void unsubscribe() {
     interfaces.mqtt.unsubscribe(settings?.subscription_topic)
 }
 
-void connect() {
+def connect() {
     initialize()
 }
 
-void disconnect() {
+def disconnect() {
     try {
         unsubscribe()
         interfaces.mqtt.disconnect()
@@ -226,7 +223,7 @@ void disconnect() {
 // ========================================================
 
 // Parse incoming message from the MQTT broker
-void parse(String event) {
+def parse(String event) {
     Map message = interfaces.mqtt.parseMessage(event)
 
     debug("[d:parse] Received MQTT message: topic = ${message.topic}")
@@ -248,11 +245,11 @@ void parse(String event) {
     return sendEvent(name: 'Subscription_topic_value', value: message.payload, displayed: true)
 }
 
-void mqttClientStatus(Map status) {
+def mqttClientStatus(Map status) {
     debug("[d:mqttClientStatus] status: ${status}")
 }
 
-void publishMqtt(String topic, String payload, Integer qos = 0, Boolean retained = false) {
+def publishMqtt(String topic, String payload, Integer qos = 0, Boolean retained = false) {
     if (!mqttConnected()) {
         debug('[d:publishMqtt] not connected')
         initialize()
@@ -272,14 +269,14 @@ void publishMqtt(String topic, String payload, Integer qos = 0, Boolean retained
 // ANNOUNCEMENTS
 // ========================================================
 
-void connected() {
+def connected() {
     debug('[d:connected] Connected to broker')
     String connectionStateValue = 'connected'
     state.connectionState = connectionStateValue
     sendEvent(name: 'connectionState', value: connectionStateValue)
 }
 
-void disconnected() {
+def disconnected() {
     debug('[d:disconnected] Disconnected from broker')
     String connectionStateValue = 'disconnected'
     state.connectionState = connectionStateValue
