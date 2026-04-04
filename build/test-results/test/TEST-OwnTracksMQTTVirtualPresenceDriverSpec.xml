@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="OwnTracksMQTTVirtualPresenceDriverSpec" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-04-04T21:45:42" hostname="DESKTOP-19PKG4U" time="2.289">
+  <properties/>
+  <testcase name="sets presence to present when topic matches and _type is location" classname="OwnTracksMQTTVirtualPresenceDriverSpec" time="1.608"/>
+  <testcase name="does not send presence event when _type is not location" classname="OwnTracksMQTTVirtualPresenceDriverSpec" time="0.232"/>
+  <testcase name="does not send presence event when topic does not match configured user and device" classname="OwnTracksMQTTVirtualPresenceDriverSpec" time="0.126"/>
+  <testcase name="does not send presence event for transition message even when topic matches" classname="OwnTracksMQTTVirtualPresenceDriverSpec" time="0.1"/>
+  <testcase name="always fires Subscription_topic_value event regardless of topic match" classname="OwnTracksMQTTVirtualPresenceDriverSpec" time="0.121"/>
+  <testcase name="always updates state.Subscription_topic_value with latest payload" classname="OwnTracksMQTTVirtualPresenceDriverSpec" time="0.1"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
