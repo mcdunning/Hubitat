@@ -13,7 +13,7 @@ class OwnTracksMQTTVirtualPresenceDriverSpec extends Specification {
         def config = new CompilerConfiguration(scriptBaseClass: HubitatScriptBase.name)
         def shell = new GroovyShell(this.class.classLoader, new Binding(), config)
         def projectDir = System.getProperty('project.dir', '.')
-        driver = shell.parse(new File(projectDir, 'Drivers/OwnTracksMQTTVirtualPresenceDriver.groovy'))
+        driver = shell.parse(new File(projectDir, 'OwnTracks/Drivers/OwnTracksMQTTVirtualPresenceDriver.groovy'))
 
         // configure() sets fields from within the base class so assignment uses the
         // generated setter, not Script.setProperty (which routes to the Binding).
