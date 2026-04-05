@@ -86,6 +86,42 @@ class OwnTracksMQTTVirtualPresenceDriverSpec extends Specification {
     }
 
     // -------------------------------------------------------------------------
+    // mqttClientStatus
+    // -------------------------------------------------------------------------
+
+    def 'mqttClientStatus accepts a String status'() {
+        when:
+        driver.mqttClientStatus('Status: Connection succeeded')
+
+        then:
+        noExceptionThrown()
+    }
+
+    // -------------------------------------------------------------------------
+    // unsubscribe
+    // -------------------------------------------------------------------------
+
+    def 'unsubscribe uses state.subscription_topic not settings'() {
+        given:
+        String unsubscribedTopic = null
+        driver.configure(
+            state: [subscription_topic: 'owntracks/+/+'],
+            interfaces: [
+                mqtt: [
+                    isConnected:  { true },
+                    unsubscribe:  { String t -> unsubscribedTopic = t }
+                ]
+            ]
+        )
+
+        when:
+        driver.unsubscribe()
+
+        then:
+        unsubscribedTopic == 'owntracks/+/+'
+    }
+
+    // -------------------------------------------------------------------------
     // State / event side-effects
     // -------------------------------------------------------------------------
 

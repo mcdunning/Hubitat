@@ -197,8 +197,8 @@ def unsubscribe() {
         connect()
     }
 
-    debug("[d:unsubscribe] full topic: ${settings?.subscription_topic}")
-    interfaces.mqtt.unsubscribe(settings?.subscription_topic)
+    debug("[d:unsubscribe] full topic: ${state.subscription_topic}")
+    interfaces.mqtt.unsubscribe(state.subscription_topic)
 }
 
 def connect() {
@@ -245,7 +245,7 @@ def parse(String event) {
     return sendEvent(name: 'Subscription_topic_value', value: message.payload, displayed: true)
 }
 
-def mqttClientStatus(Map status) {
+def mqttClientStatus(String status) {
     debug("[d:mqttClientStatus] status: ${status}")
 }
 
