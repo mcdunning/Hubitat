@@ -38,7 +38,7 @@ metadata
         name: 'OwnTracks MQTT Virtual Presence Driver',
         namespace: 'mdunning',
         author: 'Matt Dunning',
-        description: 'Driver to subscribe to an MQTT topic and, if needed, provide a two-way communication')
+        description: 'Driver to subscribe to an OwnTracks MQTT server to process location updates and set presence accordingly')
 
     {
         capability 'Notification'
@@ -52,7 +52,8 @@ metadata
                 title: 'MQTT Broker IP Address',
                 description: 'e.g. 192.168.1.200',
                 required: true,
-                displayDuringSetup: true)
+                displayDuringSetup: true
+            )
             input(
                 name: 'brokerPort',
                 type: 'string',
@@ -60,12 +61,21 @@ metadata
                 description: 'e.g. 1883',
                 required: true,
                 displayDuringSetup: true,
-                default: '1883')
+                default: '1883'
+            )
             input(
-                name: 'deviceId',
+                name: 'brokerUser',
                 type: 'string',
-                title: 'Device ID',
-                description: 'The id assigned to the device to monitor',
+                title: 'MQTT Broker Username',
+                description: 'User to log into the MQTT broker e.g. mqtt_user',
+                required: true,
+                displayDuringSetup: true
+            )
+            input(
+                name: 'brokerPassword',
+                type: 'password',
+                title: 'MQTT Broker Password',
+                description: 'e.g. ^L85er1Z7g&%2En!',
                 required: true,
                 displayDuringSetup: true
             )
@@ -73,9 +83,11 @@ metadata
                 name: 'userId',
                 type: 'string',
                 title: 'User ID',
-                description: 'The id of the user associated with the device to monitor',
+                description: 'The id of the user logging into the OwnTracks MQTT broker e.g. john',
                 required: true,
-                displayDuringSetup: true)
+                displayDuringSetup: true
+            )           
+        
             input(
                 name: 'subscription_topics',
                 type: 'string',
@@ -87,20 +99,6 @@ metadata
                 displayDuringSetup: true
             )
             input(
-                name: 'brokerUser',
-                type: 'string',
-                title: 'MQTT Broker Username',
-                description: 'User to log into the MQTT broker e.g. mqtt_user',
-                required: false,
-                displayDuringSetup: true)
-            input(
-                name: 'brokerPassword',
-                type: 'password',
-                title: 'MQTT Broker Password',
-                description: 'e.g. ^L85er1Z7g&%2En!',
-                required: false,
-                displayDuringSetup: true)
-            input(
                 name: 'debugLogging',
                 type: 'bool',
                 title: 'Enable debug logging',
@@ -108,37 +106,6 @@ metadata
                 default: false)
         }
 
-        // Provided for broker setup and troubleshooting
-        command 'publish',
-        [
-            [
-                name:'topic*',
-                type:'STRING',
-                title:'test',
-                description:'Topic'
-            ],
-            [
-                name:'message',
-                type:'STRING',
-                description:'Message'
-            ]
-        ]
-        command 'subscribe',
-        [
-            [
-                name:'topic*',
-                type:'STRING',
-                description:'Topic'
-            ]
-        ]
-        command 'unsubscribe',
-        [
-            [
-                name:'topic*',
-                type:'STRING',
-                description:'Topic'
-            ]
-        ]
         command 'connect'
         command 'disconnect'
     }
@@ -149,7 +116,7 @@ def initialize() {
     try {
         debug('Creating Connection...')
         interfaces.mqtt.connect(brokerUri(),
-                                'hubitat-Hubitat', //add device ID to make unique
+                                'hubitat-${user.id}',
                                 settings?.brokerUser,
                                 settings?.brokerPassword)
 
@@ -236,6 +203,7 @@ def parse(String event) {
         debug("[d:parse] json payload: ${payload}")
 
         // For OwnTracks location messages, set presence to present
+        // TODO:  Handle transition/leave messages to set presence to not present
         if (payload._type == 'location') {
             sendEvent(name: 'presence', value: 'present', descriptionText: "${device.displayName} is present")
         }
@@ -271,16 +239,14 @@ def publishMqtt(String topic, String payload, Integer qos = 0, Boolean retained 
 
 def connected() {
     debug('[d:connected] Connected to broker')
-    String connectionStateValue = 'connected'
-    state.connectionState = connectionStateValue
-    sendEvent(name: 'connectionState', value: connectionStateValue)
+    state.connectionState = 'connected'
+    sendEvent(name: 'connectionState', value: 'connected')
 }
 
 def disconnected() {
     debug('[d:disconnected] Disconnected from broker')
-    String connectionStateValue = 'disconnected'
-    state.connectionState = connectionStateValue
-    sendEvent(name: 'connectionState', value: connectionStateValue)
+    state.connectionState = 'disconnected'
+    sendEvent(name: 'connectionState', value: 'disconnected')
 }
 
 // ========================================================
