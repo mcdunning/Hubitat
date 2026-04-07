@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper
 import org.codehaus.groovy.control.CompilerConfiguration
 import spock.lang.Specification
 import support.HubitatScriptBase
@@ -15,12 +16,10 @@ class OwnTracksMQTTVirtualPresenceDriverSpec extends Specification {
         def projectDir = System.getProperty('project.dir', '.')
         driver = shell.parse(new File(projectDir, 'OwnTracks/Drivers/OwnTracksMQTTVirtualPresenceDriver.groovy'))
 
-        // configure() sets fields from within the base class so assignment uses the
-        // generated setter, not Script.setProperty (which routes to the Binding).
         driver.configure(
             settings:          [userId: 'john', deviceId: 'iphone', debugLogging: false],
             state:             [:],
-            device:            [displayName: 'John iPhone'],
+            device:            [displayName: 'John iPhone', currentValue: { String attr -> null }],
             sendEventCallback: { Map args -> sentEvents << args }
         )
     }
@@ -37,13 +36,100 @@ class OwnTracksMQTTVirtualPresenceDriverSpec extends Specification {
         ])
     }
 
+    private Object parseJson(String json) {
+        new JsonSlurper().parseText(json)
+    }
+
     // -------------------------------------------------------------------------
-    // Presence logic
+    // handleLocationPayload — invoked when topic does NOT end with 'Event'
     // -------------------------------------------------------------------------
 
-    def 'sets presence to present when topic matches and _type is location'() {
+    def 'location: inregions contains home → present'() {
+        when:
+        driver.handleLocationPayload(parseJson('{"_type":"location","inregions":["home","work"]}'))
+
+        then:
+        sentEvents.any { it.name == 'presence' && it.value == 'present' }
+    }
+
+    def 'location: inregions exists but home is not in it → not present'() {
+        when:
+        driver.handleLocationPayload(parseJson('{"_type":"location","inregions":["work"]}'))
+
+        then:
+        sentEvents.any { it.name == 'presence' && it.value == 'not present' }
+    }
+
+    def 'location: inregions absent → no presence event'() {
+        when:
+        driver.handleLocationPayload(parseJson('{"_type":"location","lat":51.5,"lon":-0.1}'))
+
+        then:
+        !sentEvents.any { it.name == 'presence' }
+    }
+
+    def 'location: non-location _type → no presence event'() {
+        when:
+        driver.handleLocationPayload(parseJson('{"_type":"waypoint","desc":"Home"}'))
+
+        then:
+        !sentEvents.any { it.name == 'presence' }
+    }
+
+    // -------------------------------------------------------------------------
+    // handleTransitionPayload — invoked when topic ends with 'Event'
+    // -------------------------------------------------------------------------
+
+    def 'transition: enter home → present'() {
+        when:
+        driver.handleTransitionPayload(parseJson('{"_type":"transition","event":"enter","desc":"home"}'))
+
+        then:
+        sentEvents.any { it.name == 'presence' && it.value == 'present' }
+    }
+
+    def 'transition: leave home → not present'() {
+        when:
+        driver.handleTransitionPayload(parseJson('{"_type":"transition","event":"leave","desc":"home"}'))
+
+        then:
+        sentEvents.any { it.name == 'presence' && it.value == 'not present' }
+    }
+
+    def 'transition: non-home region → no presence event'() {
+        when:
+        driver.handleTransitionPayload(parseJson('{"_type":"transition","event":"enter","desc":"work"}'))
+
+        then:
+        !sentEvents.any { it.name == 'presence' }
+    }
+
+    def 'transition: non-transition _type → no presence event'() {
+        when:
+        driver.handleTransitionPayload(parseJson('{"_type":"location","lat":51.5,"lon":-0.1}'))
+
+        then:
+        !sentEvents.any { it.name == 'presence' }
+    }
+
+    // -------------------------------------------------------------------------
+    // parse() — topic routing and side-effects
+    // -------------------------------------------------------------------------
+
+    def 'parse: topic ending with Event routes to transition handler'() {
         given:
-        givenMqttMessage('owntracks/john/iphone', '{"_type":"location","lat":51.5,"lon":-0.1}')
+        givenMqttMessage('owntracks/john/iphone/event', '{"_type":"transition","event":"leave","desc":"home"}')
+
+        when:
+        driver.parse('rawEvent')
+
+        then:
+        sentEvents.any { it.name == 'presence' && it.value == 'not present' }
+    }
+
+    def 'parse: topic not ending with Event routes to location handler'() {
+        given:
+        givenMqttMessage('owntracks/john/iphone', '{"_type":"location","inregions":["home"]}')
 
         when:
         driver.parse('rawEvent')
@@ -52,9 +138,9 @@ class OwnTracksMQTTVirtualPresenceDriverSpec extends Specification {
         sentEvents.any { it.name == 'presence' && it.value == 'present' }
     }
 
-    def 'does not send presence event when _type is not location'() {
+    def 'parse: topic not matching configured user and device → no presence event'() {
         given:
-        givenMqttMessage('owntracks/john/iphone', '{"_type":"waypoint","desc":"Home"}')
+        givenMqttMessage('owntracks/otheruser/otherdevice', '{"_type":"location","inregions":["home"]}')
 
         when:
         driver.parse('rawEvent')
@@ -63,26 +149,28 @@ class OwnTracksMQTTVirtualPresenceDriverSpec extends Specification {
         !sentEvents.any { it.name == 'presence' }
     }
 
-    def 'does not send presence event when topic does not match configured user and device'() {
+    def 'parse: always fires lastMessage event regardless of topic match'() {
         given:
-        givenMqttMessage('owntracks/otheruser/otherdevice', '{"_type":"location","lat":51.5,"lon":-0.1}')
+        def payload = '{"_type":"location","inregions":["home"]}'
+        givenMqttMessage('owntracks/otheruser/otherdevice', payload)
 
         when:
         driver.parse('rawEvent')
 
         then:
-        !sentEvents.any { it.name == 'presence' }
+        sentEvents.any { it.name == 'lastMessage' && it.value == payload }
     }
 
-    def 'does not send presence event for transition message even when topic matches'() {
-        given: 'OwnTracks transition/leave message — should eventually drive presence to not present'
-        givenMqttMessage('owntracks/john/iphone', '{"_type":"transition","event":"leave","desc":"Home"}')
+    def 'parse: always updates state.lastMessage'() {
+        given:
+        def payload = '{"_type":"location","inregions":[]}'
+        givenMqttMessage('owntracks/john/iphone', payload)
 
         when:
         driver.parse('rawEvent')
 
-        then: 'no presence event fired — driver has no not-present logic yet'
-        !sentEvents.any { it.name == 'presence' }
+        then:
+        driver.state.lastMessage == payload
     }
 
     // -------------------------------------------------------------------------
@@ -101,11 +189,11 @@ class OwnTracksMQTTVirtualPresenceDriverSpec extends Specification {
     // unsubscribe
     // -------------------------------------------------------------------------
 
-    def 'unsubscribe uses state.subscription_topic not settings'() {
+    def 'unsubscribe uses state.subscribedTopics not settings'() {
         given:
         String unsubscribedTopic = null
         driver.configure(
-            state: [subscription_topic: 'owntracks/+/+'],
+            state: [subscribedTopics: 'owntracks/+/+'],
             interfaces: [
                 mqtt: [
                     isConnected:  { true },
@@ -119,33 +207,5 @@ class OwnTracksMQTTVirtualPresenceDriverSpec extends Specification {
 
         then:
         unsubscribedTopic == 'owntracks/+/+'
-    }
-
-    // -------------------------------------------------------------------------
-    // State / event side-effects
-    // -------------------------------------------------------------------------
-
-    def 'always fires Subscription_topic_value event regardless of topic match'() {
-        given:
-        def payload = '{"_type":"location","lat":51.5,"lon":-0.1}'
-        givenMqttMessage('owntracks/otheruser/otherdevice', payload)
-
-        when:
-        driver.parse('rawEvent')
-
-        then:
-        sentEvents.any { it.name == 'Subscription_topic_value' && it.value == payload }
-    }
-
-    def 'always updates state.Subscription_topic_value with latest payload'() {
-        given:
-        def payload = '{"_type":"waypoint","desc":"Office"}'
-        givenMqttMessage('owntracks/john/iphone', payload)
-
-        when:
-        driver.parse('rawEvent')
-
-        then:
-        driver.state.Subscription_topic_value == payload
     }
 }

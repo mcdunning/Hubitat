@@ -87,7 +87,14 @@ metadata
                 required: true,
                 displayDuringSetup: true
             )           
-        
+            input(
+                name: 'deviceId',
+                type: 'string',
+                title: 'Device ID',
+                description: 'The id of the device logging into the OwnTracks MQTT broker e.g. iphone',
+                required: true,
+                displayDuringSetup: true
+            )
             input(
                 name: 'subscription_topics',
                 type: 'string',
@@ -116,7 +123,7 @@ def initialize() {
     try {
         debug('Creating Connection...')
         interfaces.mqtt.connect(brokerUri(),
-                                'hubitat-${user.id}',
+                                "hubitat-${settings?.userId}-${settings?.deviceId}",
                                 settings?.brokerUser,
                                 settings?.brokerPassword)
 
@@ -153,10 +160,12 @@ def subscribe() {
     }
 
     debug("[d:subscribe] full topic: ${settings?.subscription_topics}")
-    String[] topics = settings?.subscription_topics.split(',')
-    debug("[d:subscribe] topics: ${topics}")
-    topics.each { topic -> interfaces.mqtt.subscribe(topic) }
-    state.subscription_topic = settings?.subscription_topics
+    String[] topics = settings?.subscription_topics.split(',').collect { it.trim() }
+    topics.each { topic -> 
+        debug("[d:subscribe] subscribing to topic: ${topic}")        
+        interfaces.mqtt.subscribe(topic) 
+    }
+    state.subscribedTopics = settings?.subscription_topics
 }
 
 def unsubscribe() {
@@ -164,8 +173,8 @@ def unsubscribe() {
         connect()
     }
 
-    debug("[d:unsubscribe] full topic: ${state.subscription_topic}")
-    interfaces.mqtt.unsubscribe(state.subscription_topic)
+    debug("[d:unsubscribe] full topic: ${state.subscribedTopics}")
+    interfaces.mqtt.unsubscribe(state.subscribedTopics)
 }
 
 def connect() {
@@ -202,15 +211,17 @@ def parse(String event) {
         Object payload = jsonSlurper.parseText(message.payload)
         debug("[d:parse] json payload: ${payload}")
 
-        // For OwnTracks location messages, set presence to present
-        // TODO:  Handle transition/leave messages to set presence to not present
-        if (payload._type == 'location') {
-            sendEvent(name: 'presence', value: 'present', descriptionText: "${device.displayName} is present")
+        if (topic.toLowerCase().endsWith('event')) {
+            debug("[d:parse] handling event message...")
+            handleTransitionPayload(payload)
+        } else {
+            debug("[d:parse] handling location message...")
+            handleLocationPayload(payload)
         }
     }
 
-    state.Subscription_topic_value = message.payload
-    return sendEvent(name: 'Subscription_topic_value', value: message.payload, displayed: true)
+    state.lastMessage = message.payload
+    return sendEvent(name: 'lastMessage', value: message.payload, displayed: true)
 }
 
 def mqttClientStatus(String status) {
@@ -273,6 +284,45 @@ boolean mqttConnected() {
 
 String mqttTopic() {
     return "owntracks/${settings?.userId}/${settings?.deviceId}"
+}
+
+void handleLocationPayload(Object payload) {
+    debug("[d:handleLocationPayload] payload: ${payload}")
+    if (payload._type == 'location') {
+        if (payload.inregions && payload.inregions.any { it.equalsIgnoreCase('home') }) {
+            debug("[d:handleLocationPayload] inregions contains home, setting presence to present")
+            setPresence('present')
+        } else if (payload.inregions != null) {
+            // inregions exists but home is not in it
+            debug("[d:handleLocationPayload] inregions exists but home is not in it, setting presence to not present")
+            setPresence('not present')
+        } else {
+            // if inregions is absent entirely, don't change state — we don't know
+            debug("[d:handleLocationPayload] inregions is absent, not changing presence state")
+        }
+    }
+}
+
+void handleTransitionPayload(Object payload) {
+    debug("[d:handleTransitionPayload] payload: ${payload}")
+    if (payload._type == 'transition' && payload.desc?.equalsIgnoreCase('home')) {
+        if (payload.event == 'enter') {
+            debug("[d:handleTransitionPayload] entering home region, setting presence to present")
+            setPresence('present')
+        } else if (payload.event == 'leave') {
+            debug("[d:handleTransitionPayload] leaving home region, setting presence to not present")
+            setPresence('not present')
+        }
+    }
+}
+
+void setPresence(String value) {
+    if (device.currentValue('presence') != value) {
+        debug("[d:setPresence] presence changing to: ${value}")
+        sendEvent(name: 'presence', value: value, descriptionText: "${device.displayName} is ${value}")
+    } else {
+        debug("[d:setPresence] presence already ${value}, skipping event")
+    }
 }
 
 // ========================================================
